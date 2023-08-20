@@ -17,4 +17,4 @@ class ImplicitAPI:
     cryptopublic_get_crypto_quotes = cryptoPublicGetCryptoQuotes = Entry('crypto/quotes', 'cryptoPublic', 'GET', {})
     cryptopublic_get_crypto_latest_quotes = cryptoPublicGetCryptoLatestQuotes = Entry('crypto/latest/quotes', 'cryptoPublic', 'GET', {})
     cryptopublic_get_crypto_bars = cryptoPublicGetCryptoBars = Entry('crypto/bars', 'cryptoPublic', 'GET', {})
-    cryptopublic_get_crypto_snapshots = cryptoPublicGetCryptoSnapshots = Entry('crypto/snapshots', 'cryptoPublic', 'GET', {})
+    cryptopublic_get_crypto_latest_bars = cryptoPublicGetCryptoLatestBars = Entry('crypto/latest/bars', 'cryptoPublic', 'GET', {})

@@ -7,7 +7,7 @@ from ccxt.base.exchange import Exchange
 from ccxt.abstract.alpaca import ImplicitAPI
 from ccxt.base.types import OrderSide
 from ccxt.base.types import OrderType
-from typing import Optional
+from typing import Optional, List
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import PermissionDenied
 from ccxt.base.errors import BadRequest
@@ -83,8 +83,8 @@ class alpaca(Exchange, ImplicitAPI):
                 'fetchOrders': False,
                 'fetchPositions': False,
                 'fetchStatus': False,
-                'fetchTicker': False,
-                'fetchTickers': False,
+                'fetchTicker': True,
+                'fetchTickers': True,
                 'fetchTime': False,
                 'fetchTrades': True,
                 'fetchTradingFee': False,
@@ -128,6 +128,7 @@ class alpaca(Exchange, ImplicitAPI):
                         'crypto/quotes',
                         'crypto/latest/quotes',
                         'crypto/bars',
+                        'crypto/latest/bars',
                         'crypto/snapshots',
                     ],
                 },
@@ -148,6 +149,23 @@ class alpaca(Exchange, ImplicitAPI):
                 '3d': '3D',
                 '1w': '1W',
                 '1M': '1M',
+            },
+            'timeframesBars': {
+                '1m': '1Min',
+                '3m': '3Min',
+                '5m': '5Min',
+                '15m': '15Min',
+                '30m': '30Min',
+                '1h': '1Hour',
+                '2h': '2Hour',
+                '4h': '4Hour',
+                '6h': '6Hour',
+                '8h': '8Hour',
+                '12h': '12Hour',
+                '1d': '1Day',
+                '3d': '3Day',
+                '1w': '1Week',
+                '1M': '1Month',
             },
             'precisionMode': TICK_SIZE,
             'requiredCredentials': {
@@ -418,6 +436,109 @@ class alpaca(Exchange, ImplicitAPI):
 
     def fetch_l2_order_book(self, symbol: str, limit: Optional[int] = None, params={}):
         return self.fetch_order_book(symbol, limit, params)
+
+
+    def fetch_ticker(self, symbol: str, params={}):
+        self.load_markets()
+        market = self.market(symbol)
+        request = {
+            'symbols': market['id'],
+        }
+
+        response = self.cryptoPublicGetCryptoLatestBars(self.extend(request, params))
+        #    {
+        #      "bars": {
+        #          "BTC/USDT": {
+        #              "c": 26094.99,
+        #              "h": 26161.61,
+        #              "l": 26065.33,
+        #              "n": 226,
+        #              "o": 26124.75,
+        #              "t": "2023-08-20T05:00:00Z",
+        #              "v": 5.74403,
+        #              "vw": 26118.614774
+        #          }
+        #       }
+        #    }
+
+        bars = self.safe_value(response, 'bars', {})
+        ticker = self.safe_value(bars, market['id'], {})
+
+        response = self.cryptoPublicGetCryptoLatestQuotes(self.extend(request, params))
+        #    {
+        #    "quotes": {
+        #        "BTC/USDT": {
+        #        "ap": 26140.85,
+        #        "as": 0.13282,
+        #        "bp": 26132.14,
+        #        "bs": 0.008,
+        #        "t": "2023-08-20T20:02:48.711495607Z"
+        #        }
+        #    }
+        #    }
+        quotes = self.safe_value(response, 'quotes', {})
+        quote = self.safe_value(quotes, market['id'], {})
+        for col in ('ap', 'as', 'bp', 'bs'):
+            ticker[col] = quote[col]
+        
+        return self.parse_ticker(ticker, market)
+
+    def fetch_tickers(self, symbols: Optional[List[str]] = None, params={}):
+        """
+        fetches price tickers for multiple markets, statistical calculations with the information calculated over the past 24 hours each market
+        :param str[]|None symbols: unified symbols of the markets to fetch the ticker for, all market tickers are returned if not assigned
+        :param dict [params]: extra parameters specific to the bitfinex api endpoint
+        :returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
+        """
+        self.load_markets()
+        # symbols = self.market_symbols(symbols)
+        if symbols is None:
+            symbols = ['BTC/USDT']
+        symbols = ','.join(symbols)
+        request = {
+            'symbols': symbols,
+        }
+        response = self.cryptoPublicGetCryptoLatestBars(self.extend(request, params))
+        #    {
+        #      "bars": {
+        #          "BTC/USDT": {
+        #              "c": 26094.99,
+        #              "h": 26161.61,
+        #              "l": 26065.33,
+        #              "n": 226,
+        #              "o": 26124.75,
+        #              "t": "2023-08-20T05:00:00Z",
+        #              "v": 5.74403,
+        #              "vw": 26118.614774
+        #          }
+        #       }
+        #    }
+        bars = self.safe_value(response, 'bars', {})
+
+        response = self.cryptoPublicGetCryptoLatestQuotes(self.extend(request, params))
+        #    {
+        #    "quotes": {
+        #        "BTC/USDT": {
+        #        "ap": 26140.85,
+        #        "as": 0.13282,
+        #        "bp": 26132.14,
+        #        "bs": 0.008,
+        #        "t": "2023-08-20T20:02:48.711495607Z"
+        #        }
+        #    }
+        #    }
+        quotes = self.safe_value(response, 'quotes', {})
+
+        tickers = {}
+        for symbol in symbols.split(','):
+            market = self.market(symbol)
+            ticker = self.safe_value(bars, symbol, {})
+            quote = self.safe_value(quotes, symbol, {})
+            for col in ('ap', 'as', 'bp', 'bs'):
+                ticker[col] = quote[col]
+            tickers[symbol] = self.parse_ticker(ticker, market)
+        return tickers
+
 
     def fetch_ohlcv(self, symbol: str, timeframe='1m', since: Optional[int] = None, limit: Optional[int] = None, params={}):
         """
@@ -768,6 +889,54 @@ class alpaca(Exchange, ImplicitAPI):
             'amount': amountString,
             'cost': None,
             'fee': None,
+        }, market)
+
+
+    def parse_ticker(self, ticker, market=None):
+        #
+        #     {
+        #         "c": 26094.99,
+        #         "h": 26161.61,
+        #         "l": 26065.33,
+        #         "n": 226,
+        #         "o": 26124.75,
+        #         "ap": 26140.85,
+        #         "as": 0.13282,
+        #         "bp": 26132.14,
+        #         "bs": 0.008,
+        #         "t": "2023-08-20T05:00:00Z",
+        #         "v": 5.74403,
+        #         "vw": 26118.614774
+        #     }
+        #
+        symbol = self.safe_string(market, 'id', None)
+        datetime = self.safe_string(ticker, 't')
+        timestamp = self.parse8601(datetime)
+        
+        # Calculate quoteVolume as average traded price multiplied by volume
+        average_price = (self.safe_float(ticker, 'o', 0) + self.safe_float(ticker, 'h', 0) + self.safe_float(ticker, 'l', 0) + self.safe_float(ticker, 'c', 0)) / 4
+
+        return self.safe_ticker({
+            'symbol': symbol,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
+            'high': self.safe_string(ticker, 'h'),
+            'low': self.safe_string(ticker, 'l'),
+            'bid': self.safe_string(ticker, 'bp'),
+            'bidVolume': self.safe_string(ticker, 'bs'),
+            'ask': self.safe_string(ticker, 'ap'),
+            'askVolume': self.safe_string(ticker, 'as'),
+            'vwap': self.safe_string(ticker, 'vw'),
+            'open': self.safe_string(ticker, 'o'),
+            'close': self.safe_string(ticker, 'c'),
+            'last': self.safe_string(ticker, 'c'),
+            'previousClose': None,  # previous day close
+            'change': None,
+            'percentage': None,
+            'average': average_price,
+            'baseVolume': self.safe_string(ticker, 'v'),
+            'quoteVolume': average_price * self.safe_float(ticker, 'v', 0),
+            'info': {},
         }, market)
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
