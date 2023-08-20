@@ -72,7 +72,7 @@ class alpaca(Exchange, ImplicitAPI):
                 'fetchFundingRate': False,
                 'fetchFundingRates': False,
                 'fetchL1OrderBook': True,
-                'fetchL2OrderBook': False,
+                'fetchL2OrderBook': True,
                 'fetchMarkets': True,
                 'fetchMyTrades': False,
                 'fetchOHLCV': True,
@@ -415,6 +415,9 @@ class alpaca(Exchange, ImplicitAPI):
         rawOrderbook = self.safe_value(orderbooks, id, {})
         timestamp = self.parse8601(self.safe_string(rawOrderbook, 't'))
         return self.parse_order_book(rawOrderbook, market['symbol'], timestamp, 'b', 'a', 'p', 's')
+
+    def fetch_l2_order_book(self, symbol: str, limit: Optional[int] = None, params={}):
+        return self.fetch_order_book(symbol, limit, params)
 
     def fetch_ohlcv(self, symbol: str, timeframe='1m', since: Optional[int] = None, limit: Optional[int] = None, params={}):
         """
